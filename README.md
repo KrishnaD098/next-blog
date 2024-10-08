@@ -28,18 +28,11 @@ To add Next-Blog to your project, follow these simple steps:
    npm i @supergrowthai/next-blog
    ```
 
-2. **Link Next-Blog to Your Project**
- 
-   Run the following command to link Next-Blog in your project
-   ```shell
-   npm link @supergrowthai/next-blog
-   ```
+
+2. Create a new route at ```apps/api/sgai-blog/[...page]/route.ts```
 
 
-3. Create a new route at ```apps/api/sgai-blog/[...page]/route.ts```
-
-
-4. **Update Your Route Configuration**
+3. **Update Your Route Configuration**
 
    In your route.ts, integrate Next-Blog. Initially, bypass security for local development, and later, remove it for production environments:
 
@@ -60,11 +53,11 @@ To add Next-Blog to your project, follow these simple steps:
    const { GET, POST } = nextBlog({ db: dbProvider });
    ```
 
-5. **Create a DataPath Folder**
+4. **Create a DataPath Folder**
 
    Create a dataPath folder in the root of your project. The required files authors.json, blogs.json, categories.json, and tags.json will be automatically created when the project runs.
 
-6. **Run the Development Server**
+5. **Run the Development Server**
 
    Now, run the project using following commands
    
@@ -96,6 +89,17 @@ Here are the next steps on our journey to enhance Next-Blog:
 I'm looking for contributors to help develop features, write documentation, design user interfaces, and more. If
 you're passionate about making content creation accessible and straightforward for Next.js developers, I'd love to hear
 from you.
+
+***Contributions***
+
+**Link Next-Blog to Your Project**
+Run the following command to link Next-Blog in your project:
+
+```shell
+npm link @supergrowthai/next-blog
+```
+
+
 
 **Join me in shaping the future of blogging in Next.js. Together, we can build something amazing.**
 
