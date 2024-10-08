@@ -70,7 +70,6 @@ To add Next-Blog to your project, follow these simple steps:
    ```shell
    http://localhost:3000/api/next-blog/dashboard/blogs
    ```
-   For detailed instructions on how to link the project, refer to this [Medium article](https://medium.com/@jophin.joseph88/npm-link-2f35c7e1ac33).
 
 
 ### Roadmap
@@ -99,6 +98,7 @@ Run the following command to link Next-Blog in your project:
 ```shell
 npm link @supergrowthai/next-blog
 ```
+For detailed instructions on how to link the project, refer to this [Medium article](https://medium.com/@jophin.joseph88/npm-link-2f35c7e1ac33)
 
 
 
