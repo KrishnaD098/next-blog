@@ -166,6 +166,7 @@ const DraftBox: FunctionComponent = () => {
                 title,
                 slug,
                 content,
+                category: categoryId,
                 status: 'draft',
                 tags: []
             });

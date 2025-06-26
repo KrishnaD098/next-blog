@@ -83,6 +83,7 @@ export interface CreateBlogInput {
     content: string;
     category: string;
     tags: string[];
+    status?: "draft" | "published";
 }
 
 export interface UpdateBlogInput {
