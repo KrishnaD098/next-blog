@@ -16,7 +16,7 @@ if (process.env.VERCEL === '1' || process.env.MONGO_DB_URL) {
     const clientPromise = client.connect();
     dbProvider = async () => {
         const client = await clientPromise;
-        const dbName = 'next-blog';
+        const dbName = new URL(mongoDbUrl).pathname.substring(1) || 'next-blog';
         return new MongoDBAdapter(dbName, client);
     };
     console.log("Using MongoDBAdapter.");
