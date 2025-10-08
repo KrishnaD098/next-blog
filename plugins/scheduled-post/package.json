@@ -1,0 +1,23 @@
+{
+  "name": "scheduled-post",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "next-blog build",
+    "dev": "next-blog dev --port 64810",
+    "watch": "next-blog watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.1.0"
+  },
+  "devDependencies": {
+    "@supergrowthai/plugin-dev-kit": "workspace:*",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "nextBlog": {
+    "baseUrl": "http://localhost:3248/plugins/scheduled-post",
+    "devBaseUrl": "http://localhost:3001"
+  }
+}

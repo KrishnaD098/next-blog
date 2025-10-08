@@ -35,4 +35,4 @@ concurrently \
   "cd packages/ui && sleep 2 && npm run dev" \
   "cd packages/dashboard && sleep 4 && npm run dev" \
   "cd packages/core && sleep 6 && npm run dev" \
-  "cd packages/test-app && sleep 8 && npm run dev"
+  "cd apps/test-app && sleep 8 && npm run dev"
