@@ -36,13 +36,16 @@ async function generateAIBlogContent(topic: string, apiKey: string) {
     }
 }
 
-const createAndPublishAIBlog = async (sdk: ServerSDK) => {
-    const apiKey = "GEMINI_API_KEY";
+const createAndPublishAIBlog = async (sdk: ServerSDK, apiKey: string) => {
     if (!apiKey) {
-        throw new Error('GEMINI_API_KEY environment variable not set.');
+        throw new Error('Gemini API key was not provided.');
     }
     const topic = topics[Math.floor(Math.random() * topics.length)];
     const content = await generateAIBlogContent(topic, apiKey);
+    if (!content) {
+        console.error('Failed to generate blog content from AI.');
+        return null;
+    }
     const blog = await sdk.db.blogs.create({
         title: topic,
         content,
@@ -61,38 +64,55 @@ export default defineServer({
     hooks: {
         'every-minute-blog': async (sdk, context) => {
             try {
-                console.log('AI Blog Generator: Checking conditions...');
+                const now = new Date();
+                const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+                const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
+
+                const currentHourIST = nowIST.getUTCHours();
+                const currentMinuteIST = nowIST.getUTCMinutes();
+
+                const scheduledTimes = [
+                    { hour: 10, minute: 0 },
+                    { hour: 17, minute: 0 },
+                    // { hour: 4, minute: 25 }, for testing purpose
+                ];
+
+                const isScheduledTime = scheduledTimes.some(
+                    time => time.hour === currentHourIST && time.minute === currentMinuteIST
+                );
+
+                if (!isScheduledTime) {
+                    console.log(`AI Blog Generator: Not a scheduled time. Current IST: ${currentHourIST}:${String(currentMinuteIST).padStart(2, '0')}`);
+                    return { success: false, message: 'Not a scheduled time.' };
+                }
+
+                console.log(`AI Blog Generator: Scheduled time detected (${currentHourIST}:${String(currentMinuteIST).padStart(2, '0')} IST). Checking if generation is needed.`);
+
+                const apiKey = "GEMINI_API_KEY";
+                if (!apiKey) {
+                    console.error('AI Blog Generator: Gemini API Key is not configured in the plugin settings.');
+                    return { success: false, message: 'Gemini API Key not configured.' };
+                }
 
                 const allPosts = await sdk.db.blogs.find({});
-                allPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-                const lastPost = allPosts.length > 0 ? allPosts[0] : null;
+                const aiPosts = allPosts.filter(post => post.metadata?.source === 'gemini-ai-post');
+                aiPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                const lastPost = aiPosts.length > 0 ? aiPosts[0] : null;
 
-                const now = new Date();
                 if (lastPost) {
-                    const hoursSinceLastPost = (now.getTime() - new Date(lastPost.createdAt).getTime()) / (1000 * 60 * 60);
-                    if (hoursSinceLastPost < 12) {
-                        console.log(`Skipping: Only ${hoursSinceLastPost.toFixed(2)} hours have passed since the last post (12-hour rule).`);
-                        return { success: false, message: 'Waiting for 12-hour interval.' };
+                    const minutesSinceLastPost = (now.getTime() - new Date(lastPost.createdAt).getTime()) / (1000 * 60);
+                    if (minutesSinceLastPost < 5) { // 5 minute buffer to prevent double-generation
+                        console.log(`Skipping: An AI post was already generated ${minutesSinceLastPost.toFixed(2)} minutes ago.`);
+                        return { success: false, message: 'A post was recently generated.' };
                     }
                 }
 
-                const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
-                const startOfDayUTC = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()));
-                const startOfDayInUTCForIST = new Date(startOfDayUTC.getTime() - IST_OFFSET_MS);
+                console.log('All conditions met. Starting blog generation process...');
+                const blog = await createAndPublishAIBlog(sdk, apiKey);
 
-                const aiPostsToday = allPosts.filter(post =>
-                    post.metadata?.source === 'gemini-ai-post' &&
-                    new Date(post.createdAt).getTime() >= startOfDayInUTCForIST.getTime()
-                );
-
-                if (aiPostsToday.length >= 2) {
-                    console.log('Skipping: Daily limit of 2 AI posts has been reached for today (IST).');
-                    return { success: false, message: 'Daily limit reached.' };
+                if (!blog) {
+                    return { success: false, message: 'Failed to create blog post.' };
                 }
-
-                console.log(`All conditions met. Starting blog generation process... (${aiPostsToday.length + 1} of 2 posts for today)`);
-                const blog = await createAndPublishAIBlog(sdk);
 
                 return {
                     success: true,
@@ -103,7 +123,7 @@ export default defineServer({
                 console.error('AI Blog Post Generator hook error:', error);
                 return {
                     success: false,
-                    message: `Failed to generate blog: ${error.message}`
+                    message: `Failed to generate blog: ${error}`
                 };
             }
         }
