@@ -1,6 +1,8 @@
 import { defineServer } from '@supergrowthai/plugin-dev-kit';
 import type { ServerSDK } from '@supergrowthai/types';
 
+// --- Constants ---
+
 const topics = [
     "The Future of Renewable Energy",
     "A Beginner's Guide to Machine Learning",
@@ -10,44 +12,39 @@ const topics = [
 ];
 
 
-async function generateAIBlogContent(topic: string, apiKey: string) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
-    const payload = {
-        contents: [{ parts: [{ text: `Write a blog post about "${topic}". Output plain text.` }] }],
-    };
+const SETTINGS_ID = 'plugin_config';
+
+// --- Core Blog Generation Logic ---
+
+async function generateAIBlogContent(topic: string, apiKey: string, modelName: string) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const payload = { contents: [{ parts: [{ text: `Write a blog post about "${topic}". Output plain text.` }] }] };
 
     try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
+        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         if (!response.ok) {
-            console.error('Gemini API failed:', await response.text());
-            return null;
+            const errorText = await response.text();
+            console.error('Gemini API failed:', errorText);
+            throw new Error(`Gemini API request failed: ${errorText}`);
         }
-
         const data = await response.json();
         return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null;
-    } catch (err) {
+    } catch (err: any) {
         console.error('Error calling Gemini API:', err);
-        return null;
+        throw new Error(`Error calling Gemini API: ${err.message}`);
     }
 }
 
-const createAndPublishAIBlog = async (sdk: ServerSDK, apiKey: string) => {
-    if (!apiKey) {
-        throw new Error('Gemini API key was not provided.');
-    }
+async function createAndPublishAIBlog(sdk: ServerSDK, apiKey: string, modelName: string) {
     const topic = topics[Math.floor(Math.random() * topics.length)];
-    const content = await generateAIBlogContent(topic, apiKey);
+    const [content] = await Promise.all([generateAIBlogContent(topic, apiKey, modelName)]);
     if (!content) {
-        console.error('Failed to generate blog content from AI.');
-        return null;
+        throw new Error('Failed to generate blog content from AI.');
     }
+    // The collection for blogs is `blogs`, not our settings collection.
     const blog = await sdk.db.blogs.create({
         title: topic,
+        slug: topic.toLowerCase().replace(/ /g, '-'),
         content,
         status: 'draft',
         author: 'Gemini AI',
@@ -55,77 +52,66 @@ const createAndPublishAIBlog = async (sdk: ServerSDK, apiKey: string) => {
         updatedAt: new Date().toISOString(),
         metadata: { source: 'gemini-ai-post' }
     });
-    console.log(`Successfully created AI-generated blog with ID ${blog._id}`);
+    console.log(`blog generated and its name ${blog.title} and id ${blog._id}`);
     return blog;
-};
+}
 
 
 export default defineServer({
     hooks: {
-        'every-minute-blog': async (sdk, context) => {
+        'every-minute-blog': async (sdk) => {
             try {
+                console.log('[Scheduled Post] Running every-minute-blog hook...');
+                const settings = await sdk.settings.get(SETTINGS_ID);
+
+                if (!settings || !settings.geminiApiKey || !settings.modelName || !settings.schedule) {
+                    console.log('[Scheduled Post] Plugin not configured. Please save settings in the plugin configuration panel.');
+                    return { success: false, message: 'Plugin not configured.' };
+                }
+
                 const now = new Date();
-                const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-                const nowIST = new Date(now.getTime() + IST_OFFSET_MS);
+                const currentHour = now.getUTCHours();
+                const currentMinute = now.getUTCMinutes();
+                console.log(`[Scheduled Post] Current UTC time: ${currentHour}:${String(currentMinute).padStart(2, '0')}`);
 
-                const currentHourIST = nowIST.getUTCHours();
-                const currentMinuteIST = nowIST.getUTCMinutes();
+                const scheduledTimes = settings.schedule.split(',').map((time: string) => {
+                    const [hour, minute] = time.trim().split(':');
+                    return { hour: parseInt(hour, 10), minute: parseInt(minute, 10) };
+                }).filter((time: { hour: number; minute: number; }) => {
+                    return !isNaN(time.hour) && !isNaN(time.minute);
+                });
 
-                const scheduledTimes = [
-                    { hour: 10, minute: 0 },
-                    { hour: 17, minute: 0 },
-                    // { hour: 4, minute: 25 }, for testing purpose
-                ];
+                console.log(`[Scheduled Post] Scheduled times (UTC): ${JSON.stringify(scheduledTimes)}`);
 
-                const isScheduledTime = scheduledTimes.some(
-                    time => time.hour === currentHourIST && time.minute === currentMinuteIST
-                );
+                const isScheduledTime = scheduledTimes.some((t: { hour: number; minute: number; }) => t.hour === currentHour && t.minute === currentMinute);
 
                 if (!isScheduledTime) {
-                    console.log(`AI Blog Generator: Not a scheduled time. Current IST: ${currentHourIST}:${String(currentMinuteIST).padStart(2, '0')}`);
+                    console.log('[Scheduled Post] Not a scheduled time. Skipping blog generation.');
                     return { success: false, message: 'Not a scheduled time.' };
                 }
 
-                console.log(`AI Blog Generator: Scheduled time detected (${currentHourIST}:${String(currentMinuteIST).padStart(2, '0')} IST). Checking if generation is needed.`);
+                console.log(`[Scheduled Post] Scheduled time detected (${currentHour}:${String(currentMinute).padStart(2, '0')} UTC). Starting blog generation...`);
+                const blog = await createAndPublishAIBlog(sdk, settings.geminiApiKey, settings.modelName);
+                return { success: true, message: `Successfully generated AI blog post.`, blogId: blog?._id };
 
-                const apiKey = "GEMINI_API_KEY";
-                if (!apiKey) {
-                    console.error('AI Blog Generator: Gemini API Key is not configured in the plugin settings.');
-                    return { success: false, message: 'Gemini API Key not configured.' };
-                }
-
-                const allPosts = await sdk.db.blogs.find({});
-                const aiPosts = allPosts.filter(post => post.metadata?.source === 'gemini-ai-post');
-                aiPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-                const lastPost = aiPosts.length > 0 ? aiPosts[0] : null;
-
-                if (lastPost) {
-                    const minutesSinceLastPost = (now.getTime() - new Date(lastPost.createdAt).getTime()) / (1000 * 60);
-                    if (minutesSinceLastPost < 5) { // 5 minute buffer to prevent double-generation
-                        console.log(`Skipping: An AI post was already generated ${minutesSinceLastPost.toFixed(2)} minutes ago.`);
-                        return { success: false, message: 'A post was recently generated.' };
-                    }
-                }
-
-                console.log('All conditions met. Starting blog generation process...');
-                const blog = await createAndPublishAIBlog(sdk, apiKey);
-
-                if (!blog) {
-                    return { success: false, message: 'Failed to create blog post.' };
-                }
-
-                return {
-                    success: true,
-                    message: `Successfully generated AI blog post.`,
-                    blogId: blog._id
-                };
-            } catch (error) {
-                console.error('AI Blog Post Generator hook error:', error);
-                return {
-                    success: false,
-                    message: `Failed to generate blog: ${error}`
-                };
+            } catch (error: any) {
+                console.error('[Scheduled Post] AI Blog Post Generator hook error:', error);
+                return { success: false, message: `Failed to generate blog: ${error.message}` };
             }
         }
     },
+    rpcs: {
+        'scheduled-post:getSettings': async (sdk) => {
+            const settings = await sdk.settings.get(SETTINGS_ID);
+            return {
+                geminiApiKey: settings?.geminiApiKey || '',
+                modelName: settings?.modelName,
+                schedule: settings?.schedule || '10:00,17:00',
+            };
+        },
+        'scheduled-post:saveSettings': async (sdk, newSettings) => {
+            await sdk.settings.set(SETTINGS_ID, newSettings)
+            return { success: true };
+        }
+    }
 });
